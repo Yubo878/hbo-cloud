@@ -125,8 +125,12 @@ function validWebUrl(value) {
 function serveStatic(res, pathname) {
   const map = {
     "/": "index.html",
-    "/style.css": "style.css",
-    "/app.js": "app.js",
+    "/index.html": "index.html",
+    "/classic": "classic/index.html",
+    "/classic/": "classic/index.html",
+    "/classic/index.html": "classic/index.html",
+    "/classic/style.css": "classic/style.css",
+    "/classic/app.js": "classic/app.js",
     "/hbo2": "hbo2/index.html",
     "/hbo2/": "hbo2/index.html",
     "/hbo2/index.html": "hbo2/index.html",
