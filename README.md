@@ -49,3 +49,32 @@ Railway 会自动提供 `PORT`。
 - 不使用后台高频轮询，也不会刻意制造资源消耗。
 
 升级部署：把本压缩包中的 `server.js`、`public/` 和 `README.md` 覆盖上传到 GitHub 仓库根目录，保留现有 Railway Variables 和 Volume 设置，然后重新部署。原有数据保存在 Volume 的 `/data/store.json`，不要删除 Volume。
+
+## HBO CLOUD 2.0 新界面（`/hbo2/`）
+
+`public/hbo2/` 是 Phase 1 设计稿的落地版本，挂在同一个服务的 `/hbo2/` 路径下，和根路径的经典面板共用同一份 `store.json`：
+
+- `/` 仍是原来的经典面板，数据入口不变。
+- `/hbo2/` 是新首页（导航、笔记、任务、短链接、实时云状态）。
+- 两边的增删改立即互相同步，不存在两套数据。
+
+新界面用到的接口（都需要登录）：
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/workspace` | 一次取回 profile / tasks / links / notes / shortlinks |
+| GET | `/api/cloud` | 容器内存、CPU 采样、运行时间、数据文件大小、数据条数与 VPN 探测结果 |
+| POST/PATCH/DELETE | `/api/tasks`、`/api/tasks/:id` | 任务 |
+| POST/DELETE | `/api/notes`、`/api/notes/:id` | 笔记 |
+| PUT | `/api/profile` | 显示名称与简介 |
+
+### VPN / Xray 状态检测
+
+在 Variables 里给 `VPN_HEALTH_URL` 填节点地址即可，多个节点用英文逗号分隔：
+
+- `https://你的面板地址` —— 返回 2xx 显示 ONLINE 和延迟；非 2xx 显示 CHECK。
+- `tcp://节点IP:端口` —— 直接探测 Xray / V2Ray 监听端口是否可连（5 秒超时），适合没有 HTTP 面板的节点。
+- 想给节点起名字就写成 `香港|tcp://1.2.3.4:443`。
+
+未配置时 `/hbo2/` 的 VPN 卡片会明确显示 “NO VPN NODE CONFIGURED”，不会假装在线。
+
