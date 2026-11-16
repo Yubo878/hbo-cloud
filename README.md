@@ -40,3 +40,12 @@ Railway 会自动提供 `PORT`。
 ## 数据位置
 
 数据保存在 `/data/store.json`。删除 Volume 会删除保存的笔记、导航和短链接。建议定期备份。
+
+
+## 本次升级功能
+- 总览页显示本 Node.js 进程的内存、CPU 采样、运行时间和数据文件大小。
+- 服务状态页增加手动检查按钮；默认只检查 HBO CLOUD 自身。
+- 可选配置 `VPN_HEALTH_URL` 为你自己的 VPN 服务只读 HTTP/HTTPS 健康检查地址。不要填写私钥、密码或管理令牌。未配置时会明确显示“未配置”，不会假装检测 VPN 隧道。
+- 不使用后台高频轮询，也不会刻意制造资源消耗。
+
+升级部署：把本压缩包中的 `server.js`、`public/` 和 `README.md` 覆盖上传到 GitHub 仓库根目录，保留现有 Railway Variables 和 Volume 设置，然后重新部署。原有数据保存在 Volume 的 `/data/store.json`，不要删除 Volume。

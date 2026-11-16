@@ -46,7 +46,20 @@ function render() {
   $("#short-list").innerHTML = data.shortlinks.length ? data.shortlinks.map(s => `
     <tr><td><a href="${base}/s/${encodeURIComponent(s.slug)}" target="_blank" rel="noopener"> ${base}/s/${escapeHtml(s.slug)}</a></td><td>${escapeHtml(s.url)}</td><td><button class="delete" data-delete-short="${escapeHtml(s.id)}">删除</button></td></tr>`).join("") : '<tr><td colspan="3">还没有短链接</td></tr>';
 }
-async function refresh() { data = await api("/api/data"); render(); }
+async function refresh() { data = await api("/api/data"); render(); loadMetrics(); }
+function formatUptime(seconds) {
+  const d = Math.floor(seconds / 86400), h = Math.floor(seconds % 86400 / 3600), m = Math.floor(seconds % 3600 / 60);
+  return d ? `${d}天 ${h}小时` : h ? `${h}小时 ${m}分` : `${m}分钟`;
+}
+async function loadMetrics() {
+  try {
+    const m = await api("/api/metrics");
+    $("#metric-memory").textContent = `${m.process.memoryMb} MB`;
+    $("#metric-cpu").textContent = `${m.process.cpuPercent}%`;
+    $("#metric-uptime").textContent = formatUptime(m.app.uptimeSeconds);
+    $("#metric-storage").textContent = `${(m.storage.dataFileBytes / 1024).toFixed(1)} KB`;
+  } catch (e) { toast("资源指标读取失败"); }
+}
 
 document.querySelectorAll(".nav").forEach(button => button.addEventListener("click", () => showView(button.dataset.view)));
 document.querySelectorAll("[data-goto]").forEach(button => button.addEventListener("click", () => showView(button.dataset.goto)));
@@ -95,3 +108,18 @@ document.addEventListener("click", async e => {
   } catch(err) { toast(err.message); }
 });
 refresh().catch(err => toast(err.message));
+
+const checkButton = $("#check-services");
+if (checkButton) checkButton.addEventListener("click", async () => {
+  checkButton.disabled = true; checkButton.textContent = "检查中…";
+  try {
+    const result = await api("/api/check-services", { method: "POST", body: "{}" });
+    $("#service-results").innerHTML = result.results.map(item => {
+      const good = item.status === "online";
+      const label = good ? "正常" : item.status === "warning" ? "需留意" : item.status === "offline" ? "无法连接" : "未配置";
+      return `<div class="service-card"><span class="${good ? "live-dot" : "gray-dot"}"></span><div><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.detail)}</small></div><strong class="${good ? "status-good" : "muted"}">${label}</strong></div>`;
+    }).join("");
+    $("#check-time").textContent = `检查时间：${new Date(result.checkedAt).toLocaleString()}`;
+  } catch (e) { toast(e.message); }
+  finally { checkButton.disabled = false; checkButton.textContent = "立即检查服务"; }
+});

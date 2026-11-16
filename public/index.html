@@ -27,6 +27,12 @@
       <section class="view" id="view-overview">
         <div class="welcome"><div><span class="eyebrow light">WELCOME BACK</span><h2>你的数字生活，<br>从这里开始。</h2><p>一个入口，管理你的常用工具与私人服务。</p></div><div class="welcome-orb">H</div></div>
         <div class="stats">
+          <div class="stat"><span>当前内存</span><b id="metric-memory">--</b><small>管理面板进程 RSS</small></div>
+          <div class="stat"><span>CPU 采样</span><b id="metric-cpu">--</b><small>轻量级瞬时采样</small></div>
+          <div class="stat"><span>运行时间</span><b id="metric-uptime">--</b><small>本次启动以来</small></div>
+          <div class="stat"><span>数据文件</span><b id="metric-storage">--</b><small>store.json 文件大小</small></div>
+        </div>
+        <div class="stats">
           <div class="stat"><span>导航收藏</span><b id="link-count">0</b><small>已保存的网站</small></div>
           <div class="stat"><span>私人笔记</span><b id="note-count">0</b><small>本地持久化保存</small></div>
           <div class="stat"><span>短链接</span><b id="short-count">0</b><small>已创建的链接</small></div>
@@ -70,8 +76,12 @@
 
       <section class="view hidden" id="view-services">
         <div class="section-head"><div><span class="eyebrow">SERVICE HEALTH</span><h3>服务状态</h3><p class="muted">这里显示的是本管理面板自身状态，不代表 VPN 隧道或节点一定可用。</p></div></div>
-        <div class="service-card"><span class="live-dot"></span><div><b>HBO CLOUD 管理面板</b><small>应用健康检查：/health</small></div><strong class="status-good">运行中</strong></div>
-        <div class="service-card"><span class="gray-dot"></span><div><b>VPN 项目</b><small>尚未配置安全的外部健康检查地址</small></div><strong class="muted">未检测</strong></div>
+        <div class="service-actions"><button class="primary" id="check-services">立即检查服务</button><span class="muted" id="check-time">点击后才会进行检查，不会持续轮询。</span></div>
+        <div id="service-results">
+          <div class="service-card"><span class="live-dot"></span><div><b>HBO CLOUD 管理面板</b><small>本地服务健康状态</small></div><strong class="status-good">运行中</strong></div>
+          <div class="service-card"><span class="gray-dot"></span><div><b>VPN 项目</b><small>尚未配置 VPN_HEALTH_URL</small></div><strong class="muted">未检测</strong></div>
+        </div>
+        <div class="tip"><b>资源说明</b><span>指标仅用于观察当前面板进程，不会刻意制造 CPU 或网络负载。VPN 检查需配置只读 HTTP/HTTPS 健康地址。</span></div>
         <div class="tip"><b>安全说明</b><span>请不要把 VPN 私钥、节点密码或管理令牌粘贴到公开网页。后续如需监控 VPN，我们再单独配置只读检测。</span></div>
       </section>
       <footer>HBO CLOUD <span>·</span> Your private space</footer>

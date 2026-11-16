@@ -9,6 +9,10 @@ const PASS = process.env.ADMIN_PASSWORD;
 const DATA_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH || process.env.DATA_DIR || "./data";
 const DATA_FILE = path.join(DATA_DIR, "store.json");
 const PUBLIC_DIR = path.join(__dirname, "public");
+const VPN_HEALTH_URL = process.env.VPN_HEALTH_URL || "";
+const startedAt = Date.now();
+let previousCpu = process.cpuUsage();
+let previousCpuAt = Date.now();
 
 if (!PASS || PASS.length < 16) {
   console.error("Set ADMIN_PASSWORD to a random password of at least 16 characters.");
@@ -160,6 +164,45 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && pathname === "/api/data") {
     return sendJson(res, 200, store);
+  }
+
+  if (req.method === "GET" && pathname === "/api/metrics") {
+    const mem = process.memoryUsage();
+    const now = Date.now();
+    const cpuNow = process.cpuUsage();
+    const elapsed = Math.max(1, now - previousCpuAt);
+    const cpuMicros = (cpuNow.user - previousCpu.user) + (cpuNow.system - previousCpu.system);
+    const cpuPercent = Math.min(100, Number((cpuMicros / (elapsed * 1000) * 100).toFixed(2)));
+    previousCpu = cpuNow;
+    previousCpuAt = now;
+    return sendJson(res, 200, {
+      app: { status: "online", uptimeSeconds: Math.floor((now - startedAt) / 1000) },
+      process: { memoryMb: Number((mem.rss / 1024 / 1024).toFixed(1)), heapUsedMb: Number((mem.heapUsed / 1024 / 1024).toFixed(1)), cpuPercent },
+      storage: { dataFileBytes: fs.existsSync(DATA_FILE) ? fs.statSync(DATA_FILE).size : 0 },
+      vpnConfigured: Boolean(VPN_HEALTH_URL),
+      checkedAt: new Date(now).toISOString()
+    });
+  }
+
+  if (req.method === "POST" && pathname === "/api/check-services") {
+    const results = [{ name: "HBO CLOUD 管理面板", status: "online", detail: "本服务已响应" }];
+    if (VPN_HEALTH_URL) {
+      try {
+        const target = new URL(VPN_HEALTH_URL);
+        if (!(["https:", "http:"].includes(target.protocol))) throw new Error("仅支持 HTTP/HTTPS 地址");
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        try {
+          const response = await fetch(target, { method: "GET", signal: controller.signal, redirect: "manual" });
+          results.push({ name: "VPN 健康检查地址", status: response.ok ? "online" : "warning", detail: `HTTP ${response.status}` });
+        } finally { clearTimeout(timeout); }
+      } catch (e) {
+        results.push({ name: "VPN 健康检查地址", status: "offline", detail: e.name === "AbortError" ? "检查超时（5 秒）" : "无法连接或地址无效" });
+      }
+    } else {
+      results.push({ name: "VPN 项目", status: "unconfigured", detail: "尚未设置 VPN_HEALTH_URL；不会据此判断 VPN 故障" });
+    }
+    return sendJson(res, 200, { results, checkedAt: new Date().toISOString() });
   }
 
   if (req.method === "POST" && pathname === "/api/links") {
