@@ -50,12 +50,13 @@ Railway 会自动提供 `PORT`。
 
 升级部署：把本压缩包中的 `server.js`、`public/` 和 `README.md` 覆盖上传到 GitHub 仓库根目录，保留现有 Railway Variables 和 Volume 设置，然后重新部署。原有数据保存在 Volume 的 `/data/store.json`，不要删除 Volume。
 
-## HBO CLOUD 2.0 新界面（`/hbo2/`）
+## HBO CLOUD 2.0 新界面（现在就是首页）
 
-`public/hbo2/` 是 Phase 1 设计稿的落地版本，挂在同一个服务的 `/hbo2/` 路径下，和根路径的经典面板共用同一份 `store.json`：
+`public/hbo2/` 是 Phase 1 设计稿的落地版本，现在直接作为站点首页提供，和原来的经典面板共用同一份 `store.json`：
 
-- `/` 仍是原来的经典面板，数据入口不变。
-- `/hbo2/` 是新首页（导航、笔记、任务、短链接、实时云状态）。
+- `/` 是新首页（导航、笔记、任务、短链接、实时云状态）。
+- `/classic/` 是原来的经典面板，功能一个没少，数据入口仍在。
+- `/hbo2/` 保留为同一个新界面的别名，旧链接不会失效。
 - 两边的增删改立即互相同步，不存在两套数据。
 
 新界面用到的接口（都需要登录）：
@@ -76,5 +77,5 @@ Railway 会自动提供 `PORT`。
 - `tcp://节点IP:端口` —— 直接探测 Xray / V2Ray 监听端口是否可连（5 秒超时），适合没有 HTTP 面板的节点。
 - 想给节点起名字就写成 `香港|tcp://1.2.3.4:443`。
 
-未配置时 `/hbo2/` 的 VPN 卡片会明确显示 “NO VPN NODE CONFIGURED”，不会假装在线。
+未配置时新首页的 VPN 卡片会明确显示 “NO VPN NODE CONFIGURED”，不会假装在线。
 
