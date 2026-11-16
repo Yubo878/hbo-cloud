@@ -2,6 +2,8 @@ const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const os = require("node:os");
+const net = require("node:net");
 
 const PORT = Number(process.env.PORT || 3000);
 const USER = process.env.ADMIN_USER || "admin";
@@ -29,7 +31,9 @@ function freshStore() {
       { id: crypto.randomUUID(), title: "ChatGPT", url: "https://chatgpt.com", category: "工具" }
     ],
     notes: [],
-    shortlinks: []
+    shortlinks: [],
+    tasks: [],
+    profile: {}
   };
 }
 
@@ -39,7 +43,9 @@ function loadStore() {
     return {
       links: Array.isArray(parsed.links) ? parsed.links : [],
       notes: Array.isArray(parsed.notes) ? parsed.notes : [],
-      shortlinks: Array.isArray(parsed.shortlinks) ? parsed.shortlinks : []
+      shortlinks: Array.isArray(parsed.shortlinks) ? parsed.shortlinks : [],
+      tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [],
+      profile: parsed.profile && typeof parsed.profile === "object" ? parsed.profile : {}
     };
   } catch {
     const initial = freshStore();
@@ -120,7 +126,12 @@ function serveStatic(res, pathname) {
   const map = {
     "/": "index.html",
     "/style.css": "style.css",
-    "/app.js": "app.js"
+    "/app.js": "app.js",
+    "/hbo2": "hbo2/index.html",
+    "/hbo2/": "hbo2/index.html",
+    "/hbo2/index.html": "hbo2/index.html",
+    "/hbo2/styles.css": "hbo2/styles.css",
+    "/hbo2/app.js": "hbo2/app.js"
   };
   const file = map[pathname];
   if (!file) return false;
@@ -132,10 +143,138 @@ function serveStatic(res, pathname) {
     "Content-Type": type,
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
-    "Content-Security-Policy": "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'"
+    "Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'"
   });
   fs.createReadStream(full).pipe(res);
   return true;
+}
+
+function vpnTargets() {
+  return String(process.env.VPN_HEALTH_URL || "")
+    .split(",")
+    .map(entry => entry.trim())
+    .filter(Boolean)
+    .map((entry, index) => {
+      const sep = entry.indexOf("|");
+      const label = sep > 0 ? entry.slice(0, sep).trim() : "";
+      const target = sep > 0 ? entry.slice(sep + 1).trim() : entry;
+      return { label: label || `node ${index + 1}`, target };
+    });
+}
+
+function probeTcp(target) {
+  return new Promise(resolve => {
+    const started = Date.now();
+    const body = target.slice("tcp://".length);
+    const split = body.lastIndexOf(":");
+    const host = split > 0 ? body.slice(0, split) : "";
+    const port = Number(split > 0 ? body.slice(split + 1) : "");
+    if (!host || !Number.isInteger(port) || port <= 0 || port > 65535) {
+      resolve({ status: "unconfigured", detail: "TCP 地址需写成 tcp://host:port" });
+      return;
+    }
+    const socket = net.connect({ host, port });
+    const finish = result => {
+      socket.removeAllListeners();
+      socket.destroy();
+      resolve({ ...result, latencyMs: Date.now() - started });
+    };
+    socket.setTimeout(5000);
+    socket.once("connect", () => finish({ status: "online", detail: "端口可连接" }));
+    socket.once("timeout", () => finish({ status: "offline", detail: "连接超时（5 秒）" }));
+    socket.once("error", e => finish({ status: "offline", detail: e.code || e.message }));
+  });
+}
+
+async function probeHttp(target) {
+  const started = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetch(target, { method: "GET", signal: controller.signal, redirect: "manual" });
+    return {
+      status: response.ok ? "online" : "warning",
+      detail: `HTTP ${response.status}`,
+      latencyMs: Date.now() - started
+    };
+  } catch (e) {
+    return {
+      status: "offline",
+      detail: e.name === "AbortError" ? "检查超时（5 秒）" : "无法连接或地址无效",
+      latencyMs: Date.now() - started
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function probeVpn() {
+  const targets = vpnTargets();
+  if (!targets.length) {
+    return {
+      configured: false,
+      results: [{ name: "VPN 节点", status: "unconfigured", detail: "尚未设置 VPN_HEALTH_URL" }]
+    };
+  }
+  const results = await Promise.all(targets.map(async item => {
+    const base = { name: item.label, target: item.target };
+    try {
+      if (item.target.startsWith("tcp://")) return { ...base, ...(await probeTcp(item.target)) };
+      const parsed = new URL(item.target);
+      if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("unsupported protocol");
+      return { ...base, ...(await probeHttp(parsed.toString())) };
+    } catch {
+      return { ...base, status: "unconfigured", detail: "地址需为 https://... 或 tcp://host:port" };
+    }
+  }));
+  return { configured: true, results };
+}
+
+function cpuSnapshot() {
+  const now = Date.now();
+  const cpuNow = process.cpuUsage();
+  const elapsed = Math.max(1, now - previousCpuAt);
+  const micros = (cpuNow.user - previousCpu.user) + (cpuNow.system - previousCpu.system);
+  const cpuPercent = Math.min(100, Number((micros / (elapsed * 1000) * 100).toFixed(2)));
+  previousCpu = cpuNow;
+  previousCpuAt = now;
+  return cpuPercent;
+}
+
+async function cloudSnapshot() {
+  const mem = process.memoryUsage();
+  const now = Date.now();
+  const vpn = await probeVpn();
+  return {
+    service: {
+      name: process.env.RAILWAY_SERVICE_NAME || "hbo-cloud",
+      environment: process.env.RAILWAY_ENVIRONMENT_NAME || "local",
+      region: process.env.RAILWAY_REGION || "unknown",
+      node: process.version,
+      uptimeSeconds: Math.floor((now - startedAt) / 1000),
+      memoryMb: Number((mem.rss / 1024 / 1024).toFixed(1)),
+      heapUsedMb: Number((mem.heapUsed / 1024 / 1024).toFixed(1)),
+      cpuPercent: cpuSnapshot(),
+      dataFileBytes: fs.existsSync(DATA_FILE) ? fs.statSync(DATA_FILE).size : 0,
+      dataFile: DATA_FILE
+    },
+    system: {
+      platform: `${os.platform()} ${os.release()}`,
+      arch: os.arch(),
+      cpus: os.cpus().length,
+      totalMemMb: Math.round(os.totalmem() / 1024 / 1024),
+      freeMemMb: Math.round(os.freemem() / 1024 / 1024)
+    },
+    vpn,
+    counts: {
+      links: store.links.length,
+      notes: store.notes.length,
+      shortlinks: store.shortlinks.length,
+      tasks: store.tasks.length,
+      openTasks: store.tasks.filter(task => !task.done).length
+    },
+    checkedAt: new Date(now).toISOString()
+  };
 }
 
 const server = http.createServer(async (req, res) => {
@@ -203,6 +342,65 @@ const server = http.createServer(async (req, res) => {
       results.push({ name: "VPN 项目", status: "unconfigured", detail: "尚未设置 VPN_HEALTH_URL；不会据此判断 VPN 故障" });
     }
     return sendJson(res, 200, { results, checkedAt: new Date().toISOString() });
+  }
+
+  if (req.method === "GET" && pathname === "/api/workspace") {
+    return sendJson(res, 200, {
+      profile: store.profile,
+      tasks: store.tasks,
+      links: store.links,
+      notes: store.notes,
+      shortlinks: store.shortlinks
+    });
+  }
+
+  if (req.method === "GET" && pathname === "/api/cloud") {
+    return sendJson(res, 200, await cloudSnapshot());
+  }
+
+  if (req.method === "POST" && pathname === "/api/tasks") {
+    try {
+      const body = await readBody(req);
+      const title = cleanText(body.title, 100);
+      if (!title) return sendJson(res, 400, { error: "请填写任务内容" });
+      const item = { id: crypto.randomUUID(), title, done: false, createdAt: new Date().toISOString() };
+      store.tasks.unshift(item);
+      await saveStore();
+      return sendJson(res, 201, item);
+    } catch (e) { return sendJson(res, 400, { error: e.message }); }
+  }
+
+  if (req.method === "PATCH" && pathname.startsWith("/api/tasks/")) {
+    const id = pathname.slice("/api/tasks/".length);
+    const item = store.tasks.find(x => x.id === id);
+    if (!item) return sendJson(res, 404, { error: "任务不存在" });
+    try {
+      const body = await readBody(req);
+      if (typeof body.done === "boolean") item.done = body.done;
+      if (typeof body.title === "string") item.title = cleanText(body.title, 100) || item.title;
+      await saveStore();
+      return sendJson(res, 200, item);
+    } catch (e) { return sendJson(res, 400, { error: e.message }); }
+  }
+
+  if (req.method === "DELETE" && pathname.startsWith("/api/tasks/")) {
+    const id = pathname.slice("/api/tasks/".length);
+    store.tasks = store.tasks.filter(x => x.id !== id);
+    await saveStore();
+    return sendJson(res, 200, { ok: true });
+  }
+
+  if (req.method === "PUT" && pathname === "/api/profile") {
+    try {
+      const body = await readBody(req);
+      store.profile = {
+        name: cleanText(body.name, 40),
+        tagline: cleanText(body.tagline, 100),
+        updatedAt: new Date().toISOString()
+      };
+      await saveStore();
+      return sendJson(res, 200, store.profile);
+    } catch (e) { return sendJson(res, 400, { error: e.message }); }
   }
 
   if (req.method === "POST" && pathname === "/api/links") {
